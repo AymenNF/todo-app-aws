@@ -1,41 +1,95 @@
-import { DynamoDBClient, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
-
-const ddbClient = new DynamoDBClient({});
-
-export const handler = async (event) => {
+import {
+    DynamoDBClient,
+    UpdateItemCommand,
+    GetItemCommand,
+  } from "@aws-sdk/client-dynamodb";
+  
+  const ddbClient = new DynamoDBClient();
+  
+  export const handler = async (event) => {
+    const toDoId = event.pathParameters.id;
+    console.log("Received event for toDoId: ", toDoId);
+    const requestBody = JSON.parse(event.body);
+    const { title, IsComplete } = requestBody;
+  
     try {
-        const body = JSON.parse(event.body);
-        const updatedItem = await updateTodoItem(event.pathParameters.id, body);
+      const currentItem = await getTodoById(toDoId);
+      if (!currentItem) {
         return {
-            statusCode: 200,
-            body: JSON.stringify(updatedItem),
-            headers: { "Access-Control-Allow-Origin": "*" },
+          statusCode: 404,
+          body: JSON.stringify({
+            message: "Todo item not found",
+          }),
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+          },
         };
-    } catch (err) {
-        console.error(err);
-        return errorResponse(err.message, event.requestContext.requestId);
-    }
-};
-
-const updateTodoItem = async (id, updates) => {
-    const params = {
-        TableName: "ToDoTable",
-        Key: { id: { S: id } },
-        UpdateExpression: "set task = :task, completed = :completed",
-        ExpressionAttributeValues: {
-            ":task": { S: updates.task },
-            ":completed": { BOOL: updates.completed },
+      }
+  
+      await updateTodoIsComplete(toDoId, IsComplete, title);
+  
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          toDoId: toDoId,
+          IsComplete: IsComplete,
+          title: title,
+        }),
+        headers: {
+          "Access-Control-Allow-Origin": "*",
         },
-        ReturnValues: "UPDATED_NEW",
+      };
+    } catch (err) {
+      console.error(err);
+      return errorResponse(err.message, event.requestContext.requestId);
+    }
+  };
+  
+  const getTodoById = async (toDoId) => {
+    const params = {
+      TableName: "ToDoTable",
+      Key: {
+        toDoId: { S: toDoId.toString() }, // DynamoDB expects the number as a string
+      },
+    };
+    try {
+      const command = new GetItemCommand(params);
+      const data = await ddbClient.send(command);
+  
+      return data.Item || null; // Return null if data.Item is undefined
+    } catch (error) {
+      console.error("Error fetching todo:", error);
+      throw error;
+    }
+  };
+  
+  const updateTodoIsComplete = async (toDoId, isComplete, title) => {
+    const params = {
+      TableName: "ToDoTable",
+      Key: {
+        toDoId: { S: toDoId.toString() }, // DynamoDB expects the number as a string
+      },
+      UpdateExpression: "SET IsComplete = :IsComplete, Title = :title", // Use a comma to separate attributes
+      ExpressionAttributeValues: {
+        ":IsComplete": { BOOL: isComplete },
+        ":title": { S: title }, // Corrected the type to S for String
+      },
+      ReturnValues: "UPDATED_NEW",
     };
     const command = new UpdateItemCommand(params);
-    const data = await ddbClient.send(command);
-    return data.Attributes;
-};
-
-const errorResponse = (errorMessage, awsRequestId) => {
+    await ddbClient.send(command);
+  };
+  
+  const errorResponse = (errorMessage, awsRequestId) => {
     return {
-        statusCode: 500,
-        body: JSON.stringify({ error: errorMessage, reference: awsRequestId }),
+      statusCode: 500,
+      body: JSON.stringify({
+        Error: errorMessage,
+        Reference: awsRequestId,
+      }),
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+      },
     };
-};
+  };
+  

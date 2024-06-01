@@ -1,28 +1,49 @@
 import { DynamoDBClient, DeleteItemCommand } from "@aws-sdk/client-dynamodb";
 
-const ddbClient = new DynamoDBClient({});
+const ddbClient = new DynamoDBClient();
 
 export const handler = async (event) => {
-    try {
-        await deleteTodoItem(event.pathParameters.id);
-        return {
-            statusCode: 204,
-        };
-    } catch (err) {
-        console.error(err);
-        return errorResponse(err.message, event.requestContext.requestId);
-    }
+  const toDoId = event.pathParameters.id; // Assuming toDoId is passed as a path parameter
+  console.log("Received event for toDoId: ", toDoId);
+
+  try {
+    await deleteTodoById(toDoId);
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        message: "Todo item deleted successfully",
+      }),
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+      },
+    };
+  } catch (err) {
+    console.error(err);
+    return errorResponse(err.message, event.requestContext.requestId);
+  }
 };
 
-const deleteTodoItem = async (id) => {
-    const params = { TableName: "ToDoTable", Key: { id: { S: id } } };
-    const command = new DeleteItemCommand(params);
-    await ddbClient.send(command);
+const deleteTodoById = async (toDoId) => {
+  const params = {
+    TableName: "ToDoTable",
+    Key: {
+      id: { S: toDoId.toString() }, // DynamoDB expects the number as a string
+    },
+  };
+  const command = new DeleteItemCommand(params);
+  await ddbClient.send(command);
 };
 
 const errorResponse = (errorMessage, awsRequestId) => {
-    return {
-        statusCode: 500,
-        body: JSON.stringify({ error: errorMessage, reference: awsRequestId }),
-    };
+  return {
+    statusCode: 500,
+    body: JSON.stringify({
+      Error: errorMessage,
+      Reference: awsRequestId,
+    }),
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+    },
+  };
 };
